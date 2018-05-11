@@ -1,0 +1,166 @@
+use std::io::{Read, Seek, SeekFrom};
+use byteorder::{ReadBytesExt, BigEndian};
+
+use ::Error;
+
+
+#[derive(Debug)]
+pub struct Yaz0<R> where R: Read + Seek {
+    reader: R,
+
+    pub data_start: usize,
+
+    /// Expected size of the decompressed file
+    pub expected_size: usize,
+}
+
+impl<R> Yaz0<R> where R: Read + Seek {
+    /// Creates a new `Yaz0` from a reader.
+    pub fn new(mut reader: R) -> Result<Yaz0<R>, Error> {
+        // Parses header and advances reader to start of data
+        let expected_size = parse_header(&mut reader)?;
+
+        let data_start = reader.seek(SeekFrom::Current(0))?;
+
+        Ok(Yaz0 {
+            data_start: data_start as usize,
+            expected_size: expected_size,
+            reader: reader,
+        })
+    }
+
+    /// Decompresses the Yaz0 file, producing a `Vec<u8>` of the decompressed data.
+    pub fn decompress(&mut self) -> Result<Vec<u8>, Error> {
+        let mut dest: Vec<u8> = Vec::with_capacity(self.expected_size);
+        dest.resize(self.expected_size, 0x00);
+        let mut dest_pos: usize = 0;
+
+        let mut ops_left: u8 = 0;
+        let mut code_byte: u8 = 0;
+
+        while dest_pos < self.expected_size {
+            if ops_left == 0 {
+                code_byte = self.reader.read_u8()?;
+                ops_left = 8;
+            }
+
+            if code_byte & 0x80 != 0 {
+                dest[dest_pos] = self.reader.read_u8()?;
+                dest_pos += 1;
+            } else {
+                let byte1: u8 = self.reader.read_u8()?;
+                let byte2: u8 = self.reader.read_u8()?;
+
+                // Calculate where the copy should start
+                let dist = (((byte1 & 0xf) as usize) << 8) | (byte2 as usize);
+                let run_base = dest_pos - (dist + 1);
+
+                // Figure out how many bytes we have to copy
+                let copy_len: usize = match byte1 >> 4 {
+                    0 => self.reader.read_u8()? as usize + 0x12, // read the next input byte and add 0x12
+                                                                 // to get the length to copy
+                    n => n as usize + 2 // otherwise, just take the upper nybble of byte1 and add 2 to get the length
+                };
+
+                for i in 0..copy_len {
+                    dest[dest_pos] = dest[run_base + i];
+                    dest_pos += 1;
+                }
+            }
+
+            // use next operation bit from the code byte
+            code_byte <<= 1;
+            ops_left -= 1;
+        }
+
+        Ok(dest)
+    }
+}
+
+/// Parse the header of a Yaz0 file, provided via the passed reader.
+/// Leaves the read head at the start of the Yaz0 data block.
+fn parse_header<R>(reader: &mut R) -> Result<usize, Error>
+    where R: Read + Seek
+{
+    let mut magic = [0u8; 4];
+    reader.read_exact(&mut magic)?;
+    if &magic != b"Yaz0" {
+        return Err(Error::InvalidMagic);
+    }
+
+    let expected_size = reader.read_u32::<BigEndian>()?;
+
+    // consume 8 bytes
+    reader.seek(SeekFrom::Current(8))?;
+
+    Ok(expected_size as usize)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// Deflate the Bianco Hills .szs file, and compare to the decompressed file produced by yaz0dec.
+    #[test]
+    fn test_deflate_bianco() {
+        let data: &[u8] = include_bytes!("../data/bianco0.szs");
+        let reference_decompressed: &[u8] = include_bytes!("../data/bianco0");
+
+        let mut reader = Cursor::new(data);
+
+        let mut f = Yaz0::new(reader).unwrap();
+
+        let deflated = f.decompress().unwrap();
+
+        println!("{} :: {}", deflated.len(), reference_decompressed.len());
+
+        assert_eq!(&deflated[..], &reference_decompressed[..]);
+    }
+
+    /// Test loading a small constructed Yaz0 file containing random data.
+    /// Note: this file will almost certainly error if decompression is attempted.
+    #[test]
+    fn test_load() {
+        let data: &[u8] = &[
+            // 'Yaz0'
+            0x59, 0x61, 0x7a, 0x30,
+            // 13371337 bytes, when deflated
+            0x00, 0xcc, 0x07, 0xc9,
+            // 8 bytes of zeros
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+
+            // 20 bytes of (random) data
+            0x69, 0x95, 0xa4, 0xa3,
+            0x5f, 0xfd, 0xf6, 0x8c,
+            0x7d, 0xee, 0x93, 0xc5,
+            0x4a, 0x1f, 0xd3, 0x19,
+            0xdc, 0x78, 0xfd, 0x3f,
+        ];
+
+        let cursor = Cursor::new(&data);
+        let f = Yaz0::new(cursor).unwrap();
+
+        assert_eq!(f.expected_size, 13371337);
+    }
+
+    /// Check that the Yaz0 header parsing fails when provided with a file not starting with the Yaz0 magic.
+    #[test]
+    fn test_bad_magic() {
+        let data: &[u8] = &[
+            // 'Foo0'
+            0x46, 0x6f, 0x6f, 0x30,
+            // 13371337 bytes, when deflated
+            0x00, 0xcc, 0x07, 0xc9,
+            // 8 bytes of zeros
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let cursor = Cursor::new(&data);
+        let result = Yaz0::new(cursor);
+
+        assert!(result.is_err());
+    }
+}
