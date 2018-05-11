@@ -107,7 +107,7 @@ mod tests {
         let data: &[u8] = include_bytes!("../data/bianco0.szs");
         let reference_decompressed: &[u8] = include_bytes!("../data/bianco0");
 
-        let mut reader = Cursor::new(data);
+        let reader = Cursor::new(data);
 
         let mut f = Yaz0::new(reader).unwrap();
 
