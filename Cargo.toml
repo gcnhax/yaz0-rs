@@ -2,6 +2,7 @@
 name = "yaz0"
 version = "0.1.0"
 authors = ["Erin Moon <erin@hashbang.sh>"]
+exclude = ["data/*"]
 
 [dependencies]
 byteorder = "1.1.0"
