@@ -5,7 +5,7 @@ use header::Yaz0Header;
 use Error;
 
 #[derive(Debug)]
-pub struct Yaz0<R>
+pub struct Yaz0Archive<R>
 where
     R: Read + Seek,
 {
@@ -15,18 +15,18 @@ where
     header: Yaz0Header,
 }
 
-impl<R> Yaz0<R>
+impl<R> Yaz0Archive<R>
 where
     R: Read + Seek,
 {
     /// Creates a new `Yaz0` from a reader.
-    pub fn new(mut reader: R) -> Result<Yaz0<R>, Error> {
+    pub fn new(mut reader: R) -> Result<Yaz0Archive<R>, Error> {
         // Parses header and advances reader to start of data
         let header = Yaz0Header::parse(&mut reader)?;
 
         let data_start = reader.seek(SeekFrom::Current(0))?;
 
-        Ok(Yaz0 {
+        Ok(Yaz0Archive {
             reader,
             header,
             data_start: data_start as usize,
@@ -94,7 +94,7 @@ mod tests {
 
         let reader = Cursor::new(data);
 
-        let mut f = Yaz0::new(reader).unwrap();
+        let mut f = Yaz0Archive::new(reader).unwrap();
 
         let deflated = f.decompress().unwrap();
 
@@ -125,7 +125,7 @@ mod tests {
         ];
 
         let cursor = Cursor::new(&data);
-        let f = Yaz0::new(cursor).unwrap();
+        let f = Yaz0Archive::new(cursor).unwrap();
 
         assert_eq!(f.header.expected_size, 13371337);
     }
@@ -144,7 +144,7 @@ mod tests {
         ];
 
         let cursor = Cursor::new(&data);
-        let result = Yaz0::new(cursor);
+        let result = Yaz0Archive::new(cursor);
 
         assert!(result.is_err());
     }

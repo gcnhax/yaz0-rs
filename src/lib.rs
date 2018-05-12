@@ -7,4 +7,4 @@ mod inflate;
 
 pub use error::Error;
 pub use header::Yaz0Header;
-pub use inflate::Yaz0;
+pub use inflate::Yaz0Archive;
