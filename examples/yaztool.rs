@@ -7,7 +7,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use yaz0::Yaz0;
+use yaz0::Yaz0Archive;
 
 fn main() -> Result<(), Box<Error>> {
     let matches = App::new("yaztool")
@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<Error>> {
 
     let reader = BufReader::new(File::open(in_path)?);
 
-    let mut yazfile = Yaz0::new(reader)?;
+    let mut yazfile = Yaz0Archive::new(reader)?;
     let deflated = yazfile.decompress()?;
 
     let mut outfile = File::create(out_path)?;
