@@ -6,3 +6,6 @@ exclude = ["data/*"]
 
 [dependencies]
 byteorder = "1.1.0"
+
+[dev-dependencies]
+clap = "2.31.2"
