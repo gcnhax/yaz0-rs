@@ -115,7 +115,7 @@ mod tests {
 
         println!("{} :: {}", deflated.len(), reference_decompressed.len());
 
-        assert_eq!(&deflated[..], &reference_decompressed[..]);
+        assert!(deflated == reference_decompressed, "deflated bianco0 did not match reference deflation!");
     }
 
     /// Test loading a small constructed Yaz0 file containing random data.
