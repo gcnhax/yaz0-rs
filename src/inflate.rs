@@ -1,44 +1,48 @@
+use byteorder::ReadBytesExt;
 use std::io::{Read, Seek, SeekFrom};
-use byteorder::{ReadBytesExt, BigEndian};
 
-use ::Error;
-
+use header::Yaz0Header;
+use Error;
 
 #[derive(Debug)]
-pub struct Yaz0<R> where R: Read + Seek {
+pub struct Yaz0<R>
+where
+    R: Read + Seek,
+{
     reader: R,
 
-    pub data_start: usize,
-
-    /// Expected size of the decompressed file
-    pub expected_size: usize,
+    data_start: usize,
+    header: Yaz0Header,
 }
 
-impl<R> Yaz0<R> where R: Read + Seek {
+impl<R> Yaz0<R>
+where
+    R: Read + Seek,
+{
     /// Creates a new `Yaz0` from a reader.
     pub fn new(mut reader: R) -> Result<Yaz0<R>, Error> {
         // Parses header and advances reader to start of data
-        let expected_size = parse_header(&mut reader)?;
+        let header = Yaz0Header::parse(&mut reader)?;
 
         let data_start = reader.seek(SeekFrom::Current(0))?;
 
         Ok(Yaz0 {
+            reader,
+            header,
             data_start: data_start as usize,
-            expected_size: expected_size,
-            reader: reader,
         })
     }
 
     /// Decompresses the Yaz0 file, producing a `Vec<u8>` of the decompressed data.
     pub fn decompress(&mut self) -> Result<Vec<u8>, Error> {
-        let mut dest: Vec<u8> = Vec::with_capacity(self.expected_size);
-        dest.resize(self.expected_size, 0x00);
+        let mut dest: Vec<u8> = Vec::with_capacity(self.header.expected_size);
+        dest.resize(self.header.expected_size, 0x00);
         let mut dest_pos: usize = 0;
 
         let mut ops_left: u8 = 0;
         let mut code_byte: u8 = 0;
 
-        while dest_pos < self.expected_size {
+        while dest_pos < self.header.expected_size {
             if ops_left == 0 {
                 code_byte = self.reader.read_u8()?;
                 ops_left = 8;
@@ -75,25 +79,6 @@ impl<R> Yaz0<R> where R: Read + Seek {
 
         Ok(dest)
     }
-}
-
-/// Parse the header of a Yaz0 file, provided via the passed reader.
-/// Leaves the read head at the start of the Yaz0 data block.
-fn parse_header<R>(reader: &mut R) -> Result<usize, Error>
-    where R: Read + Seek
-{
-    let mut magic = [0u8; 4];
-    reader.read_exact(&mut magic)?;
-    if &magic != b"Yaz0" {
-        return Err(Error::InvalidMagic);
-    }
-
-    let expected_size = reader.read_u32::<BigEndian>()?;
-
-    // consume 8 bytes
-    reader.seek(SeekFrom::Current(8))?;
-
-    Ok(expected_size as usize)
 }
 
 #[cfg(test)]
@@ -142,7 +127,7 @@ mod tests {
         let cursor = Cursor::new(&data);
         let f = Yaz0::new(cursor).unwrap();
 
-        assert_eq!(f.expected_size, 13371337);
+        assert_eq!(f.header.expected_size, 13371337);
     }
 
     /// Check that the Yaz0 header parsing fails when provided with a file not starting with the Yaz0 magic.
