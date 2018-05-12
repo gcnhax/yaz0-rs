@@ -1,4 +1,4 @@
-# rarc - a Rust crate for extracting Nintendo Yaz0 files
+# yaz0 - a Rust crate for extracting Nintendo Yaz0 files
 
 [![Build Status](https://travis-ci.org/barzamin/yaz0-rs.svg?branch=master)](https://travis-ci.org/barzamin/yaz0-rs) [![codecov](https://codecov.io/gh/barzamin/yaz0-rs/branch/master/graph/badge.svg)](https://codecov.io/gh/barzamin/yaz0-rs)
 
