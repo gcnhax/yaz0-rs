@@ -1,8 +1,10 @@
 extern crate byteorder;
 
-mod inflate;
 mod deflate;
 mod error;
+mod header;
+mod inflate;
 
-pub use inflate::Yaz0;
 pub use error::Error;
+pub use header::Yaz0Header;
+pub use inflate::Yaz0;
