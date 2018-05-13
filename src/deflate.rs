@@ -11,7 +11,7 @@ pub struct Yaz0Writer {
 
 fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
     const MAX_LOOKBACK: usize = 0x1000;
-    let lookback = MAX_LOOKBACK / (quality as f32/10.).floor() as usize;
+    let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
 
     let mut read_head = 0;
     let mut encoded = Vec::new();
@@ -20,14 +20,14 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
         println!("working on a new chunk at {}", read_head);
         // the chunk codon
         let mut codon: u8 = 0x0;
-        // the packets following the codon
 
-        // we just use this as an arena for preparing packets.
-        // 8 codes * 3 bytes/code = 24 bytes of packet (abs. max.)
+        // we use this as an arena for preparing packets.
+        // justification for the size:
+        //   8 codes * 3 bytes/code = 24 bytes of packet (abs. max.)
         let mut packets = ArrayVec::<[u8; 24]>::new();
 
         // -- encode the packets
-        for packet_n in 0..7 {
+        for packet_n in 0..=7 {
             println!("encoding packet {}", packet_n);
             // -- search back for existing data
 
@@ -48,6 +48,7 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
                     }
                 }
 
+                // if this search position was better than we've seen before, update our best-seen values.
                 if max_runlength > best_runlength {
                     best_runlength = max_runlength;
                     best_match_cursor = search_head;
@@ -131,15 +132,20 @@ pub enum CompressionLevel {
 }
 
 #[cfg(test)]
+#[cfg_attr(rustfmt, rustfmt_skip)] // don't mess up our arrays 😅
 mod test {
     use super::*;
 
     #[test]
     fn test_deflate_naive() {
-        // assert_eq!(deflate_naive(&[12, 34, 56], 10), [0xe0, 12, 34, 56]);
+        assert_eq!(deflate_naive(&[12, 34, 56], 10), [0xe0, 12, 34, 56]);
+
         assert_eq!(
             deflate_naive(&[0, 1, 2, 0xa, 0, 1, 2, 3, 0xb, 0, 1, 2, 3, 4, 5, 6, 7], 10),
-            []
+            [
+                0xff, /* | */ 0, 1, 2, 0xa, 0, 1, 2, 3,
+                0xbc, /* | */ 0xb, /**/ 32, 4, /**/ 4, 5, 6, 7,
+            ]
         );
     }
 }
