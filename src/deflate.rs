@@ -257,4 +257,28 @@ mod test {
             ]
         );
     }
+
+    #[test]
+    fn inverts() {
+        use rand::{self, Rng};
+        use rand::distributions::Standard;
+        use inflate::Yaz0Archive;
+        use std::io::Cursor;
+
+        for _ in 0..10 {
+            let data: Vec<u8> = rand::thread_rng().sample_iter(&Standard).take(50).collect();
+
+            let mut deflated = Vec::new();
+            Yaz0Writer::new(&mut deflated)
+                .write(&data, CompressionLevel::Lookahead { quality: 10 })
+                .expect("Could not deflate");
+
+            let inflated = Yaz0Archive::new(Cursor::new(deflated))
+                .expect("Error creating Yaz0Archive")
+                .decompress()
+                .expect("Error deflating yaz0 archive");
+
+            assert_eq!(inflated, data);
+        }
+    }
 }
