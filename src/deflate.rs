@@ -9,6 +9,52 @@ pub struct Yaz0Writer {
     header: Yaz0Header,
 }
 
+struct Run {
+    cursor: usize,
+    length: usize,
+}
+
+impl Run {
+    pub fn zero() -> Run {
+        Run {
+            cursor: 0,
+            length: 0,
+        }
+    }
+
+    pub fn swap_if_better(self, other: Run) -> Run {
+        if self.length > other.length {
+            self
+        } else {
+            other
+        }
+    }
+}
+
+fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
+    // where we start
+    let search_start = cursor.saturating_sub(lookback);
+
+    // the best runlength we've seen so far, and where the match occured
+    let mut run = Run::zero();
+
+    for search_head in search_start..cursor {
+        // incremental check for every possible substring after the read head
+        let mut max_runlength = 0;
+        for runlength in 0..(src.len() - cursor) {
+            if src[search_head + runlength] != src[cursor + runlength] {
+                max_runlength = runlength;
+                break;
+            }
+        }
+
+        // if this search position was better than we've seen before, update our best run.
+        run = run.swap_if_better(Run { cursor: search_head, length: max_runlength })
+    }
+
+    run
+}
+
 fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
     const MAX_LOOKBACK: usize = 0x1000;
     let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
@@ -28,42 +74,25 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
         // -- encode the packets
         for packet_n in 0..=7 {
             // -- search back for existing data
+            let best_run = find_naive_run(src, read_head, lookback);
 
-            // where we start
-            let search_start = read_head.saturating_sub(lookback);
+            if best_run.length > 3 {
+                let dist = read_head - best_run.cursor - 1;
 
-            // the best runlength we've seen so far, and where the match occured
-            let mut best_runlength = 0;
-            let mut best_match_cursor = 0;
-
-            for search_head in search_start..read_head {
-                // incremental check for every possible substring after the read head
-                let mut max_runlength = 0;
-                for runlength in 0..(src.len() - read_head) {
-                    if src[search_head + runlength] != src[read_head + runlength] {
-                        max_runlength = runlength;
-                        break;
-                    }
-                }
-
-                // if this search position was better than we've seen before, update our best-seen values.
-                if max_runlength > best_runlength {
-                    best_runlength = max_runlength;
-                    best_match_cursor = search_head;
-                }
-            }
-
-            if best_match_cursor > 3 {
-                let dist = read_head - best_match_cursor - 1;
-
-                if best_runlength >= 12 {
+                if best_run.cursor >= 12 {
                     // 3-byte
+                    packets.push((dist as u32 >> 8) as u8); // the rest of dist
+                    packets.push((dist as u32 & 0xff) as u8); // the lsb chunk of dist
+                    let actual_runlength = best_run.length.min(0xff + 0x12); // clip to maximum possible runlength
+                    packets.push((actual_runlength - 0x12) as u8);
+
+                    read_head += actual_runlength;
                 } else {
                     // 2-byte
-                    packets.push(((best_runlength as u8 - 2) << 4) | (dist as u32 >> 8) as u8); // the rest of dist
+                    packets.push(((best_run.length as u8 - 2) << 4) | (dist as u32 >> 8) as u8); // the rest of dist
                     packets.push((dist as u32 & 0xff) as u8); // the lsb chunk
 
-                    read_head += best_runlength;
+                    read_head += best_run.length;
                 }
             } else {
                 // force a failout if we've hit the end of the file.
