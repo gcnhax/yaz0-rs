@@ -50,13 +50,36 @@ fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
         }
 
         // if this search position was better than we've seen before, update our best run.
-        run = run.swap_if_better(Run { cursor: search_head, length: max_runlength })
+        run = run.swap_if_better(Run {
+            cursor: search_head,
+            length: max_runlength,
+        })
     }
 
     run
 }
 
-fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
+fn find_lookahead_run(src: &[u8], cursor: usize, lookback: usize) -> (bool, Run) {
+    // where we start
+    let search_start = cursor.saturating_sub(lookback);
+
+    // attempt to perform naive run search
+    let run = find_naive_run(src, cursor, lookback);
+
+    if run.length >= 3 {
+        // if we look forward a single byte and reencode, how does that look?
+        let lookahead_run = find_naive_run(src, cursor + 1, lookback);
+
+        // if it's +2 better than the original naive run, pick it
+        if lookahead_run.length >= run.length + 2 {
+            return (true, lookahead_run);
+        }
+    }
+
+    return (false, run);
+}
+
+fn deflate_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> Vec<u8> {
     const MAX_LOOKBACK: usize = 0x1000;
     let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
 
@@ -73,11 +96,31 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
         let mut packets = ArrayVec::<[u8; 24]>::new();
 
         // -- encode the packets
-        for packet_n in 0..=7 {
+        let mut packet_n = 0;
+        while packet_n < 8 {
             // -- search back for existing data
-            let best_run = find_naive_run(src, read_head, lookback);
+            let (is_lookahead, best_run) = match level {
+                CompressionLevel::Naive { .. } => (false, find_naive_run(src, read_head, lookback)),
+                CompressionLevel::Lookahead { .. } => find_lookahead_run(src, read_head, lookback),
+            };
 
-            if best_run.length > 3 {
+            if best_run.length >= 3 {
+                // if we hit a lookahead sequence, we need to write the head byte in preparation for the run.
+                if is_lookahead {
+                    // push the head byte's packet
+                    packets.push(src[read_head]);
+
+                    // mark the codon with the packet
+                    codon |= 0x80 >> packet_n;
+
+                    // push the read head forward
+                    read_head += 1;
+                    // this is its own packet, so advance
+                    packet_n += 1;
+                }
+
+                // compute how far back the start of the run is from the read head, minus an offset of 1
+                // due to the offst, reading the byte before the read head is encoded as dist = 0.
                 let dist = read_head - best_run.cursor - 1;
 
                 // if the run is longer than 18 bytes, we must use a 3-byte packet instead of a 2-byte one.
@@ -114,6 +157,7 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
                     break;
                 }
 
+                // push the packet data
                 packets.push(src[read_head]);
 
                 // mark the codon with the packet
@@ -122,6 +166,9 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
                 // push the read head forward
                 read_head += 1;
             }
+
+            // advance the packet counter
+            packet_n += 1;
         }
 
         // -- write (codon :: packets) into the compressed stream
@@ -134,7 +181,8 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
 
 fn deflate(data: &[u8], level: CompressionLevel) -> Vec<u8> {
     match level {
-        CompressionLevel::Naive { quality } => deflate_naive(data, quality),
+        CompressionLevel::Naive { quality } => deflate_lookaround(data, quality, level),
+        CompressionLevel::Lookahead { quality } => deflate_lookaround(data, quality, level),
     }
 }
 
@@ -161,6 +209,7 @@ impl Yaz0Writer {
 
 pub enum CompressionLevel {
     Naive { quality: usize },
+    Lookahead { quality: usize },
 }
 
 #[cfg(test)]
@@ -170,13 +219,32 @@ mod test {
 
     #[test]
     fn test_deflate_naive() {
-        assert_eq!(deflate_naive(&[12, 34, 56], 10), [0xe0, 12, 34, 56]);
+        const Q: CompressionLevel = CompressionLevel::Naive {quality: 10};
+
+        assert_eq!(deflate(&[12, 34, 56], Q), [0xe0, 12, 34, 56]);
 
         assert_eq!(
-            deflate_naive(&[0, 1, 2, 0xa, 0, 1, 2, 3, 0xb, 0, 1, 2, 3, 4, 5, 6, 7], 10),
+            deflate(&[0, 1, 2, 0xa, 0, 1, 2, 3, 0xb, 0, 1, 2, 3, 4, 5, 6, 7], Q),
             [
-                0xff, /* | */ 0, 1, 2, 0xa, 0, 1, 2, 3,
-                0xbc, /* | */ 0xb, /**/ 32, 4, /**/ 4, 5, 6, 7,
+                0xf6, /* | id:  */ 0, 1, 2, 0xa,
+                      /*   run: */ 0x10, 0x03,
+                      /*   id:  */ 3, 0xb,
+                      /*   run: */ 0x20, 0x04,
+                0xf0, /* | id:  */ 4, 5, 6, 7,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_deflate_lookahead() {
+        const Q: CompressionLevel = CompressionLevel::Lookahead {quality: 10};
+
+        assert_eq!(
+            deflate(&[0, 0, 0, 0xa, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa], Q),
+            [
+                0xfa, /* | id:  */ 0, 0, 0, 10, 0,
+                      /*   run: */ 0x70, 0x00,
+                      /*   id:  */ 0xa,
             ]
         );
     }
