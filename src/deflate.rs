@@ -17,7 +17,6 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
     let mut encoded = Vec::new();
     // -- encode a packet stream
     while read_head < src.len() {
-        println!("working on a new chunk at {}", read_head);
         // the chunk codon
         let mut codon: u8 = 0x0;
 
@@ -28,7 +27,6 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
 
         // -- encode the packets
         for packet_n in 0..=7 {
-            println!("encoding packet {}", packet_n);
             // -- search back for existing data
 
             // where we start
@@ -56,14 +54,7 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
             }
 
             if best_match_cursor > 3 {
-                println!(
-                    "best match at {}, length: {}",
-                    best_match_cursor, best_runlength
-                );
-
                 let dist = read_head - best_match_cursor - 1;
-
-                println!("want to encode backtrack of {}", dist);
 
                 if best_runlength >= 12 {
                     // 3-byte
@@ -88,8 +79,6 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
                 // push the read head forward
                 read_head += 1;
             }
-
-            println!("read_head:{}", read_head);
         }
 
         // -- write (codon :: packets) into the compressed stream
