@@ -9,6 +9,7 @@ pub struct Yaz0Writer {
     header: Yaz0Header,
 }
 
+#[derive(Debug)]
 struct Run {
     cursor: usize,
     length: usize,
@@ -79,8 +80,15 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
             if best_run.length > 3 {
                 let dist = read_head - best_run.cursor - 1;
 
-                if best_run.cursor >= 12 {
-                    // 3-byte
+                // if the run is longer than 18 bytes, we must use a 3-byte packet instead of a 2-byte one.
+                if best_run.length >= 0x12 {
+                    // 3-byte packet. this looks like the following:
+                    //
+                    // 1 byte                   2 bytes         3 bytes
+                    // ├────────┬───────────────┼───────────────┼───────────┐
+                    // │ 0b0000 │ dist (4 msbs) │ dist (8 lsbs) │ length-12 │
+                    // └────────┴───────────────┴───────────────┴───────────┘
+
                     packets.push((dist as u32 >> 8) as u8); // the rest of dist
                     packets.push((dist as u32 & 0xff) as u8); // the lsb chunk of dist
                     let actual_runlength = best_run.length.min(0xff + 0x12); // clip to maximum possible runlength
@@ -88,8 +96,14 @@ fn deflate_naive(src: &[u8], quality: usize) -> Vec<u8> {
 
                     read_head += actual_runlength;
                 } else {
-                    // 2-byte
-                    packets.push(((best_run.length as u8 - 2) << 4) | (dist as u32 >> 8) as u8); // the rest of dist
+                    // 2-byte packet. this looks like the following:
+                    //
+                    // 1 byte                     2 bytes
+                    // ├──────────┬───────────────┼───────────────┐
+                    // │ length-2 │ dist (4 msbs) │ dist (8 lsbs) │
+                    // └──────────┴───────────────┴───────────────┘
+
+                    packets.push(((best_run.length as u8 - 2) << 4) | (dist as u32 >> 8) as u8);
                     packets.push((dist as u32 & 0xff) as u8); // the lsb chunk
 
                     read_head += best_run.length;
