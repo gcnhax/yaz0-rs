@@ -281,4 +281,26 @@ mod test {
             assert_eq!(inflated, data);
         }
     }
+
+    #[test]
+    fn inverts_bianco() {
+        use inflate::Yaz0Archive;
+        use std::io::Cursor;
+
+        let data: &[u8] = include_bytes!("../data/bianco0");
+        let reader = Cursor::new(data);
+
+        let mut deflated = Vec::new();
+        Yaz0Writer::new(&mut deflated)
+            .compress_and_write(&data, CompressionLevel::Lookahead { quality: 10 })
+            .expect("Could not deflate");
+
+        let inflated = Yaz0Archive::new(reader)
+            .expect("Error creating Yaz0Archive")
+            .decompress()
+            .expect("Error deflating Yaz0 archive");
+
+
+        assert_eq!(inflated, data);
+    }
 }
