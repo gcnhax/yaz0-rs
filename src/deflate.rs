@@ -1,5 +1,5 @@
 #![allow(unused_variables)]
-use arrayvec::ArrayVec;
+use arrayvec::{self, ArrayVec};
 use header::Yaz0Header;
 use std::io::Write;
 use Error;
@@ -84,6 +84,44 @@ fn find_lookahead_run(src: &[u8], cursor: usize, lookback: usize) -> (bool, Run)
     return (false, run);
 }
 
+fn write_run<A>(read_head: usize, run: &Run, destination: &mut ArrayVec<A>) -> usize
+where
+    A: arrayvec::Array<Item = u8>,
+{
+    // compute how far back the start of the run is from the read head, minus an offset of 1
+    // due to the offst, reading the byte before the read head is encoded as dist = 0.
+    let dist = read_head - run.cursor - 1;
+
+    // if the run is longer than 18 bytes, we must use a 3-byte packet instead of a 2-byte one.
+    if run.length >= 0x12 {
+        // 3-byte packet. this looks like the following:
+        //
+        // 1 byte                   2 bytes         3 bytes
+        // ├────────┬───────────────┼───────────────┼───────────┐
+        // │ 0b0000 │ dist (4 msbs) │ dist (8 lsbs) │ length-12 │
+        // └────────┴───────────────┴───────────────┴───────────┘
+
+        destination.push((dist as u32 >> 8) as u8);
+        destination.push((dist as u32 & 0xff) as u8);
+        let actual_runlength = run.length.min(0xff + 0x12); // clip to maximum possible runlength
+        destination.push((actual_runlength - 0x12) as u8);
+
+        return actual_runlength;
+    } else {
+        // 2-byte packet. this looks like the following:
+        //
+        // 1 byte                     2 bytes
+        // ├──────────┬───────────────┼───────────────┐
+        // │ length-2 │ dist (4 msbs) │ dist (8 lsbs) │
+        // └──────────┴───────────────┴───────────────┘
+
+        destination.push(((run.length as u8 - 2) << 4) | (dist as u32 >> 8) as u8);
+        destination.push((dist as u32 & 0xff) as u8);
+
+        return run.length;
+    }
+}
+
 fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> Vec<u8> {
     const MAX_LOOKBACK: usize = 0x1000;
     let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
@@ -124,38 +162,7 @@ fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> V
                     packet_n += 1;
                 }
 
-                // compute how far back the start of the run is from the read head, minus an offset of 1
-                // due to the offst, reading the byte before the read head is encoded as dist = 0.
-                let dist = read_head - best_run.cursor - 1;
-
-                // if the run is longer than 18 bytes, we must use a 3-byte packet instead of a 2-byte one.
-                if best_run.length >= 0x12 {
-                    // 3-byte packet. this looks like the following:
-                    //
-                    // 1 byte                   2 bytes         3 bytes
-                    // ├────────┬───────────────┼───────────────┼───────────┐
-                    // │ 0b0000 │ dist (4 msbs) │ dist (8 lsbs) │ length-12 │
-                    // └────────┴───────────────┴───────────────┴───────────┘
-
-                    packets.push((dist as u32 >> 8) as u8);
-                    packets.push((dist as u32 & 0xff) as u8);
-                    let actual_runlength = best_run.length.min(0xff + 0x12); // clip to maximum possible runlength
-                    packets.push((actual_runlength - 0x12) as u8);
-
-                    read_head += actual_runlength;
-                } else {
-                    // 2-byte packet. this looks like the following:
-                    //
-                    // 1 byte                     2 bytes
-                    // ├──────────┬───────────────┼───────────────┐
-                    // │ length-2 │ dist (4 msbs) │ dist (8 lsbs) │
-                    // └──────────┴───────────────┴───────────────┘
-
-                    packets.push(((best_run.length as u8 - 2) << 4) | (dist as u32 >> 8) as u8);
-                    packets.push((dist as u32 & 0xff) as u8);
-
-                    read_head += best_run.length;
-                }
+                read_head += write_run(read_head, &best_run, &mut packets);
             } else {
                 // force a failout if we've hit the end of the file.
                 if read_head >= src.len() {
@@ -299,7 +306,6 @@ mod test {
             .expect("Error creating Yaz0Archive")
             .decompress()
             .expect("Error deflating Yaz0 archive");
-
 
         assert_eq!(inflated, data);
     }
