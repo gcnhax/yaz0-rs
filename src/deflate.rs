@@ -11,7 +11,7 @@ where
     writer: &'a mut W,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct Run {
     cursor: usize,
     length: usize,
@@ -202,7 +202,7 @@ where
         Yaz0Writer { writer }
     }
 
-    pub fn write(self, data: &[u8], level: CompressionLevel) -> Result<(), Error> {
+    pub fn compress_and_write(self, data: &[u8], level: CompressionLevel) -> Result<(), Error> {
         // -- construct and write the header
         let header = Yaz0Header::new(data.len());
         header.write(self.writer)?;
@@ -260,9 +260,9 @@ mod test {
 
     #[test]
     fn inverts() {
-        use rand::{self, Rng};
-        use rand::distributions::Standard;
         use inflate::Yaz0Archive;
+        use rand::distributions::Standard;
+        use rand::{self, Rng};
         use std::io::Cursor;
 
         for _ in 0..10 {
@@ -270,13 +270,13 @@ mod test {
 
             let mut deflated = Vec::new();
             Yaz0Writer::new(&mut deflated)
-                .write(&data, CompressionLevel::Lookahead { quality: 10 })
+                .compress_and_write(&data, CompressionLevel::Lookahead { quality: 10 })
                 .expect("Could not deflate");
 
             let inflated = Yaz0Archive::new(Cursor::new(deflated))
                 .expect("Error creating Yaz0Archive")
                 .decompress()
-                .expect("Error deflating yaz0 archive");
+                .expect("Error deflating Yaz0 archive");
 
             assert_eq!(inflated, data);
         }
