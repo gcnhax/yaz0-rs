@@ -126,6 +126,9 @@ fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> V
     const MAX_LOOKBACK: usize = 0x1000;
     let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
 
+    // used to cache lookahead runs to put in the next packet,
+    // since we need to write a head packet first
+    let mut lookahead_cache: Option<Run> = None;
     let mut read_head = 0;
     let mut encoded = Vec::new();
     // -- encode a packet stream
@@ -141,27 +144,23 @@ fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> V
         // -- encode the packets
         let mut packet_n = 0;
         while packet_n < 8 {
-            // -- search back for existing data
-            let (is_lookahead, best_run) = match level {
-                CompressionLevel::Naive { .. } => (false, find_naive_run(src, read_head, lookback)),
-                CompressionLevel::Lookahead { .. } => find_lookahead_run(src, read_head, lookback),
+            // -- search back for existing data. if we already have data in the lookahead cache, use that instead.
+            let (hit_lookahead, best_run) = if let Some(cache) = lookahead_cache.take() {
+                (false, cache)
+            } else {
+                match level {
+                    CompressionLevel::Lookahead {..} => find_lookahead_run(src, read_head, lookback),
+                    CompressionLevel::Naive {..} => (false, find_naive_run(src, read_head, lookback)),
+                }
             };
 
-            if best_run.length >= 3 {
-                // if we hit a lookahead sequence, we need to write the head byte in preparation for the run.
-                if is_lookahead {
-                    // push the head byte's packet
-                    packets.push(src[read_head]);
+            if hit_lookahead {
+                lookahead_cache = Some(best_run);
+            }
 
-                    // mark the codon with the packet
-                    codon |= 0x80 >> packet_n;
-
-                    // push the read head forward
-                    read_head += 1;
-                    // this is its own packet, so advance
-                    packet_n += 1;
-                }
-
+            // if we hit a lookahead sequence, we need to write the head byte in preparation for the run.
+            // otherwise, if the run was a compression, just do the thing.
+            if best_run.length >= 3 && !hit_lookahead {
                 read_head += write_run(read_head, &best_run, &mut packets);
             } else {
                 // force a failout if we've hit the end of the file.
