@@ -2,6 +2,7 @@
 use arrayvec::{self, ArrayVec};
 use header::Yaz0Header;
 use std::io::Write;
+use std::sync::mpsc::{self, Sender};
 use Error;
 
 pub struct Yaz0Writer<'a, W: 'a>
@@ -32,6 +33,11 @@ impl Run {
             other
         }
     }
+}
+
+#[derive(Debug)]
+pub struct ProgressMsg {
+    read_head: usize,
 }
 
 fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
@@ -122,7 +128,12 @@ where
     }
 }
 
-fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> Vec<u8> {
+fn compress_lookaround(
+    src: &[u8],
+    quality: usize,
+    level: CompressionLevel,
+    progress_sender: Sender<ProgressMsg>,
+) -> Vec<u8> {
     const MAX_LOOKBACK: usize = 0x1000;
     let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
 
@@ -149,8 +160,12 @@ fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> V
                 (false, cache)
             } else {
                 match level {
-                    CompressionLevel::Lookahead {..} => find_lookahead_run(src, read_head, lookback),
-                    CompressionLevel::Naive {..} => (false, find_naive_run(src, read_head, lookback)),
+                    CompressionLevel::Lookahead { .. } => {
+                        find_lookahead_run(src, read_head, lookback)
+                    }
+                    CompressionLevel::Naive { .. } => {
+                        (false, find_naive_run(src, read_head, lookback))
+                    }
                 }
             };
 
@@ -185,16 +200,34 @@ fn compress_lookaround(src: &[u8], quality: usize, level: CompressionLevel) -> V
         // -- write (codon :: packets) into the compressed stream
         encoded.push(codon);
         encoded.extend(&packets);
+
+        if read_head % 10 == 0 || read_head == src.len() - 1 {
+            // ignore errors if the rx is disconnected
+            let _ = progress_sender.send(ProgressMsg { read_head });
+        }
     }
 
     encoded
 }
 
-fn compress(data: &[u8], level: CompressionLevel) -> Vec<u8> {
+fn compress_with_progress(
+    data: &[u8],
+    level: CompressionLevel,
+    progress_sender: Sender<ProgressMsg>,
+) -> Vec<u8> {
     match level {
-        CompressionLevel::Naive { quality } => compress_lookaround(data, quality, level),
-        CompressionLevel::Lookahead { quality } => compress_lookaround(data, quality, level),
+        CompressionLevel::Naive { quality } => {
+            compress_lookaround(data, quality, level, progress_sender)
+        }
+        CompressionLevel::Lookahead { quality } => {
+            compress_lookaround(data, quality, level, progress_sender)
+        }
     }
+}
+
+fn compress(data: &[u8], level: CompressionLevel) -> Vec<u8> {
+    let (tx, _) = mpsc::channel();
+    compress_with_progress(data, level, tx)
 }
 
 impl<'a, W> Yaz0Writer<'a, W>
@@ -215,6 +248,23 @@ where
 
         // -- compress and write the data
         let compressed = compress(data, level);
+        self.writer.write(&compressed)?;
+
+        Ok(())
+    }
+
+    pub fn compress_and_write_with_progress(
+        self,
+        data: &[u8],
+        level: CompressionLevel,
+        progress_tx: Sender<ProgressMsg>,
+    ) -> Result<(), Error> {
+        // -- construct and write the header
+        let header = Yaz0Header::new(data.len());
+        header.write(self.writer)?;
+
+        // -- compress and write the data
+        let compressed = compress_with_progress(data, level, progress_tx);
         self.writer.write(&compressed)?;
 
         Ok(())
@@ -303,12 +353,28 @@ mod test {
     fn inverts_bianco() {
         use inflate::Yaz0Archive;
         use std::io::Cursor;
+        use indicatif::{ProgressBar, ProgressDrawTarget};
+        use std::thread;
 
         let data: &[u8] = include_bytes!("../data/bianco0");
+        let length = data.len();
+
+        let (tx, rx) = mpsc::channel::<ProgressMsg>();
+        let pb = ProgressBar::new(length as u64);
+        pb.set_draw_target(ProgressDrawTarget::stdout());
+        thread::spawn(move || {
+            loop {
+                if let Ok(progress) = rx.recv() {
+                    pb.set_position(progress.read_head as u64);
+                } else {
+                    break;
+                }
+            }
+        });
 
         let mut deflated = Vec::new();
         Yaz0Writer::new(&mut deflated)
-            .compress_and_write(&data, CompressionLevel::Lookahead { quality: 10 })
+            .compress_and_write_with_progress(&data, CompressionLevel::Lookahead { quality: 10 }, tx)
             .expect("Could not deflate");
 
         let reader = Cursor::new(&deflated);

@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate indicatif;
 extern crate yaz0;
 
 use std::io::Write;

@@ -7,6 +7,8 @@ extern crate pretty_assertions;
 
 #[cfg(test)]
 extern crate rand;
+#[cfg(test)]
+extern crate indicatif;
 
 mod deflate;
 mod error;
