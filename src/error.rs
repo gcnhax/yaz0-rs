@@ -6,7 +6,9 @@ use std::convert::From;
 
 #[derive(Debug)]
 pub enum Error {
+    /// An error was encountered performing IO operations.
     Io(io::Error),
+    /// The Yaz0 file header's magic was invalid.
     InvalidMagic,
 }
 

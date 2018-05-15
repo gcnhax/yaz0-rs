@@ -12,6 +12,7 @@ where
     writer: &'a mut W,
 }
 
+/// Represents a compression run of length `length` starting at `cursor`.
 #[derive(Debug, Clone, Copy)]
 struct Run {
     pub cursor: usize,
@@ -19,6 +20,7 @@ struct Run {
 }
 
 impl Run {
+    /// Returns a run of zero length starting at position 0.
     pub fn zero() -> Run {
         Run {
             cursor: 0,
@@ -26,6 +28,7 @@ impl Run {
         }
     }
 
+    /// Returns `self` unless `other` is a longer run, in which case it returns `other`.
     pub fn swap_if_better(self, other: Run) -> Run {
         if self.length > other.length {
             self
@@ -35,11 +38,15 @@ impl Run {
     }
 }
 
+
+/// Message sent by the compressor to inform other threads of the compression progress.
 #[derive(Debug)]
 pub struct ProgressMsg {
     pub read_head: usize,
 }
 
+/// Naively looks back in the input stream, trying to find the longest possible
+/// substring that matches the data after the current read cursor.
 fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
     // the location which we start searching at, `lookback` bytes before
     // the current read cursor. saturating_sub prevents underflow.
@@ -68,6 +75,14 @@ fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
     run
 }
 
+/// Looks back in the input stream, finding a naive run; if one is found, it tries
+/// copying a single byte of that run and then finding a new one.
+/// If it's at least two bytes longer than the initial run, it picks that instead and signals
+/// that we need to copy that byte before copying the run.
+///
+/// Returns a tuple of whether we need to copy an initial byte for a lookahead run, and whatever run was found.
+///
+/// This is much better than plain naive search in most cases. It's also pretty much what Nintendo does.
 fn find_lookahead_run(src: &[u8], cursor: usize, lookback: usize) -> (bool, Run) {
     // the location which we start searching at, `lookback` bytes before
     // the current read cursor. saturating_sub prevents underflow.
@@ -90,6 +105,7 @@ fn find_lookahead_run(src: &[u8], cursor: usize, lookback: usize) -> (bool, Run)
     return (false, run);
 }
 
+/// Writes a [Run] to the `destination`, with the cursor at `read_head`.
 fn write_run<A>(read_head: usize, run: &Run, destination: &mut ArrayVec<A>) -> usize
 where
     A: arrayvec::Array<Item = u8>,
@@ -128,12 +144,18 @@ where
     }
 }
 
+/// Compresses the data in `src` at [CompressionLevel] `level`, using either naive or
+/// lookahead compression, sending progress updates over `progress_tx`. Returns a [Vec] containing
+/// the compressed payload.
 fn compress_lookaround(
     src: &[u8],
-    quality: usize,
     level: CompressionLevel,
-    progress_sender: Sender<ProgressMsg>,
+    progress_tx: Sender<ProgressMsg>,
 ) -> Vec<u8> {
+    let quality = match level {
+        CompressionLevel::Naive { quality } => quality,
+        CompressionLevel::Lookahead { quality } => quality,
+    };
     const MAX_LOOKBACK: usize = 0x1000;
     let lookback = MAX_LOOKBACK / (quality as f32 / 10.).floor() as usize;
 
@@ -203,28 +225,29 @@ fn compress_lookaround(
 
         if read_head % 10 == 0 || read_head == src.len() - 1 {
             // ignore errors if the rx is disconnected
-            let _ = progress_sender.send(ProgressMsg { read_head });
+            let _ = progress_tx.send(ProgressMsg { read_head });
         }
     }
 
     encoded
 }
 
+/// Compresses `data` with [CompressionLevel] `level`, sending progress updates over `progress_tx`.
+/// Returns a [Vec] of the compressed payload.
 fn compress_with_progress(
     data: &[u8],
     level: CompressionLevel,
-    progress_sender: Sender<ProgressMsg>,
+    progress_tx: Sender<ProgressMsg>,
 ) -> Vec<u8> {
     match level {
-        CompressionLevel::Naive { quality } => {
-            compress_lookaround(data, quality, level, progress_sender)
-        }
-        CompressionLevel::Lookahead { quality } => {
-            compress_lookaround(data, quality, level, progress_sender)
+        CompressionLevel::Naive { .. } | CompressionLevel::Lookahead { .. } => {
+            compress_lookaround(data, level, progress_tx)
         }
     }
 }
 
+/// Compresses `data` with [CompressionLevel] `level`.
+/// Returns a [Vec] of the compressed payload.
 fn compress(data: &[u8], level: CompressionLevel) -> Vec<u8> {
     let (tx, _) = mpsc::channel();
     compress_with_progress(data, level, tx)
@@ -241,6 +264,7 @@ where
         Yaz0Writer { writer }
     }
 
+    /// Compress and write the passed `data`, at compression level `level`.
     pub fn compress_and_write(self, data: &[u8], level: CompressionLevel) -> Result<(), Error> {
         // -- construct and write the header
         let header = Yaz0Header::new(data.len());
@@ -253,6 +277,8 @@ where
         Ok(())
     }
 
+    /// Compress and write the passed `data`, at compression level `level`.
+    /// Progress updates are streamed out of `progress_tx`.
     pub fn compress_and_write_with_progress(
         self,
         data: &[u8],
@@ -271,9 +297,16 @@ where
     }
 }
 
+/// Represents the agressiveness of lookback used by the compressor.
 pub enum CompressionLevel {
-    Naive { quality: usize },
-    Lookahead { quality: usize },
+    Naive {
+        /// Lookback distance. Set between 1 and 10; 10 corresponds to greatest lookback distance.
+        quality: usize
+    },
+    Lookahead {
+        /// Lookback distance. Set between 1 and 10; 10 corresponds to greatest lookback distance.
+        quality: usize
+    },
 }
 
 #[cfg(test)]
@@ -351,9 +384,9 @@ mod test {
     // maybe just build _this one test_ with --release.
     #[ignore]
     fn inverts_bianco() {
+        use indicatif::{ProgressBar, ProgressDrawTarget};
         use inflate::Yaz0Archive;
         use std::io::Cursor;
-        use indicatif::{ProgressBar, ProgressDrawTarget};
         use std::thread;
 
         let data: &[u8] = include_bytes!("../data/bianco0");
@@ -369,7 +402,11 @@ mod test {
 
         let mut deflated = Vec::new();
         Yaz0Writer::new(&mut deflated)
-            .compress_and_write_with_progress(&data, CompressionLevel::Lookahead { quality: 10 }, tx)
+            .compress_and_write_with_progress(
+                &data,
+                CompressionLevel::Lookahead { quality: 10 },
+                tx,
+            )
             .expect("Could not deflate");
 
         let reader = Cursor::new(&deflated);

@@ -4,6 +4,7 @@ use std::io::{Read, Seek, SeekFrom};
 use header::Yaz0Header;
 use Error;
 
+/// Wraps a reader of Yaz0 data, providing decompression methods.
 #[derive(Debug)]
 pub struct Yaz0Archive<R>
 where

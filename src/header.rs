@@ -15,7 +15,7 @@ impl Yaz0Header {
     }
 
     /// Parses the header of a Yaz0 file, provided via the passed reader.
-    /// Leaves the read head at the start of the Yaz0 data block.
+    /// Leaves the read head at the start of the data block.
     pub fn parse<R>(reader: &mut R) -> Result<Yaz0Header, Error>
     where
         R: Read + Seek,
