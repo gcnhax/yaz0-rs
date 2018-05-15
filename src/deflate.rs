@@ -289,22 +289,33 @@ mod test {
     }
 
     #[test]
+    // this takes way too long on CI. TODO: figure out how to still test this on CI;
+    // maybe just build _this one test_ with --release.
+    #[ignore]
     fn inverts_bianco() {
         use inflate::Yaz0Archive;
         use std::io::Cursor;
 
         let data: &[u8] = include_bytes!("../data/bianco0");
-        let reader = Cursor::new(data);
 
         let mut deflated = Vec::new();
         Yaz0Writer::new(&mut deflated)
             .compress_and_write(&data, CompressionLevel::Lookahead { quality: 10 })
             .expect("Could not deflate");
 
+        let reader = Cursor::new(&deflated);
+
         let inflated = Yaz0Archive::new(reader)
             .expect("Error creating Yaz0Archive")
             .decompress()
             .expect("Error deflating Yaz0 archive");
+
+        println!(
+            "original: {:#x} / compressed: {:#x} ({:.3}%)",
+            data.len(),
+            deflated.len(),
+            deflated.len() as f64 * 100. / data.len() as f64
+        );
 
         assert_eq!(inflated, data);
     }
