@@ -10,10 +10,10 @@ extern crate rand;
 #[cfg(test)]
 extern crate indicatif;
 
-mod deflate;
 mod error;
-mod header;
-mod inflate;
+pub mod deflate;
+pub mod header;
+pub mod inflate;
 
 pub use deflate::{CompressionLevel, Yaz0Writer};
 pub use error::Error;
