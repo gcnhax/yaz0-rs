@@ -232,7 +232,7 @@ mod test {
 
     #[test]
     #[cfg_attr(rustfmt, rustfmt_skip)] // don't mess up our arrays 😅
-    fn test_deflate_naive() {
+    fn deflate_naive() {
         const Q: CompressionLevel = CompressionLevel::Naive {quality: 10};
 
         assert_eq!(compress(&[12, 34, 56], Q), [0xe0, 12, 34, 56]);
@@ -251,7 +251,7 @@ mod test {
 
     #[test]
     #[cfg_attr(rustfmt, rustfmt_skip)] // don't mess up our arrays 😅
-    fn test_deflate_lookahead() {
+    fn deflate_with_lookahead() {
         const Q: CompressionLevel = CompressionLevel::Lookahead {quality: 10};
 
         assert_eq!(
@@ -262,6 +262,14 @@ mod test {
                       /*   id:  */ 0xa,
             ]
         );
+    }
+
+    #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn deflate_run() {
+        const Q: CompressionLevel = CompressionLevel::Lookahead {quality: 10};
+
+        assert_eq!(compress(&[0;30], Q), [0x80, /*| id: */ 0, /* compr: */ 0, 0, 11]);
     }
 
     #[test]
@@ -311,7 +319,7 @@ mod test {
             .expect("Error deflating Yaz0 archive");
 
         println!(
-            "original: {:#x} / compressed: {:#x} ({:.3}%)",
+            "original: {:#x} / compressed (w/ header): {:#x} ({:.3}%)",
             data.len(),
             deflated.len(),
             deflated.len() as f64 * 100. / data.len() as f64
