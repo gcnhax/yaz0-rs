@@ -44,18 +44,18 @@ fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
 
     for search_head in search_start..cursor {
         // incremental check for every possible substring after the read head.
-        let mut max_runlength = 0;
-        for runlength in 0..(src.len() - cursor) {
+        let mut runlength = 0;
+        while runlength < src.len() - cursor {
             if src[search_head + runlength] != src[cursor + runlength] {
-                max_runlength = runlength;
                 break;
             }
+            runlength += 1;
         }
 
         // if this search position was better than we've seen before, update our best run.
         run = run.swap_if_better(Run {
             cursor: search_head,
-            length: max_runlength,
+            length: runlength,
         })
     }
 
