@@ -14,8 +14,8 @@ where
 
 #[derive(Debug, Clone, Copy)]
 struct Run {
-    cursor: usize,
-    length: usize,
+    pub cursor: usize,
+    pub length: usize,
 }
 
 impl Run {
@@ -37,7 +37,7 @@ impl Run {
 
 #[derive(Debug)]
 pub struct ProgressMsg {
-    read_head: usize,
+    pub read_head: usize,
 }
 
 fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
@@ -357,18 +357,13 @@ mod test {
         use std::thread;
 
         let data: &[u8] = include_bytes!("../data/bianco0");
-        let length = data.len();
 
         let (tx, rx) = mpsc::channel::<ProgressMsg>();
-        let pb = ProgressBar::new(length as u64);
+        let pb = ProgressBar::new(data.len() as u64);
         pb.set_draw_target(ProgressDrawTarget::stdout());
         thread::spawn(move || {
-            loop {
-                if let Ok(progress) = rx.recv() {
-                    pb.set_position(progress.read_head as u64);
-                } else {
-                    break;
-                }
+            while let Ok(progress) = rx.recv() {
+                pb.set_position(progress.read_head as u64);
             }
         });
 
