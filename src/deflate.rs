@@ -1,4 +1,3 @@
-#![allow(unused_variables)]
 use arrayvec::{self, ArrayVec};
 use header::Yaz0Header;
 use std::io::Write;
@@ -84,10 +83,6 @@ fn find_naive_run(src: &[u8], cursor: usize, lookback: usize) -> Run {
 ///
 /// This is much better than plain naive search in most cases. It's also pretty much what Nintendo does.
 fn find_lookahead_run(src: &[u8], cursor: usize, lookback: usize) -> (bool, Run) {
-    // the location which we start searching at, `lookback` bytes before
-    // the current read cursor. saturating_sub prevents underflow.
-    let search_start = cursor.saturating_sub(lookback);
-
     // get the best naive run.
     let run = find_naive_run(src, cursor, lookback);
 
@@ -272,7 +267,7 @@ where
 
         // -- compress and write the data
         let compressed = compress(data, level);
-        self.writer.write(&compressed)?;
+        self.writer.write_all(&compressed)?;
 
         Ok(())
     }
@@ -291,13 +286,14 @@ where
 
         // -- compress and write the data
         let compressed = compress_with_progress(data, level, progress_tx);
-        self.writer.write(&compressed)?;
+        self.writer.write_all(&compressed)?;
 
         Ok(())
     }
 }
 
 /// Represents the agressiveness of lookback used by the compressor.
+#[derive(Clone, Copy)]
 pub enum CompressionLevel {
     Naive {
         /// Lookback distance. Set between 1 and 10; 10 corresponds to greatest lookback distance.

@@ -40,9 +40,9 @@ impl Yaz0Header {
     where
         W: Write,
     {
-        writer.write(b"Yaz0")?;
+        writer.write_all(b"Yaz0")?;
         writer.write_u32::<BigEndian>(self.expected_size as u32)?;
-        writer.write(&[0x0; 8])?;
+        writer.write_all(&[0x0; 8])?;
 
         Ok(())
     }
