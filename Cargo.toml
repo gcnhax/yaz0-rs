@@ -2,6 +2,13 @@
 name = "yaz0"
 version = "0.1.0"
 authors = ["Erin Moon <erin@hashbang.sh>"]
+description = "A library for de/compressing Nintendo Yaz0 files"
+license = "MIT"
+repository = "https://github.com/gcnhax/yaz0-rs"
+readme = "README.md"
+documentation = "https://docs.rs/yaz0"
+keywords = ["yaz0", "gamecube", "gcn", "romhacking"]
+categories = ["compression"]
 exclude = ["data/*"]
 
 [dependencies]
@@ -13,3 +20,6 @@ clap = "2.31.2"
 rand = "0.5.0-pre.1"
 pretty_assertions = "0.5.1"
 indicatif = "0.9"
+
+[badges]
+maintenance = { status = "actively-developed" }
