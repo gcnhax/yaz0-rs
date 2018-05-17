@@ -1,7 +1,6 @@
 use std::io;
 use std::fmt;
 use std::error::Error as StdError;
-use std::borrow::Cow;
 use std::convert::From;
 
 #[derive(Debug)]
@@ -12,15 +11,6 @@ pub enum Error {
     InvalidMagic,
 }
 
-impl Error {
-    fn detail(&self) -> Cow<str> {
-        match *self {
-            Error::Io(ref io_err) => format!("IO error: {}", io_err.description()).into(),
-            _ => self.description().into(),
-        }
-    }
-}
-
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Error {
         Error::Io(err)
@@ -28,16 +18,26 @@ impl From<io::Error> for Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.write_str(&self.detail())
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Error::Io(io_err) => write!(f, "IO error: {}", io_err),
+            _ => f.write_str(self.description()),
+        }
     }
 }
 
 impl StdError for Error {
     fn description(&self) -> &str {
-        match *self {
-            Error::Io(ref io_err) => io_err.description(),
+        match self {
+            Error::Io(io_err) => io_err.description(),
             Error::InvalidMagic => "Invalid magic in file header",
+        }
+    }
+
+    fn cause(&self) -> Option<&StdError> {
+        match self {
+            Error::Io(io_err) => Some(io_err),
+            _ => None,
         }
     }
 }
