@@ -87,11 +87,11 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    /// Deflate the Bianco Hills .szs file, and compare to the decompressed file produced by yaz0dec.
+    /// Deflate a test .szs file encoded by yaz0enc, and compare to the decompressed file produced by yaz0dec.
     #[test]
     fn test_deflate_bianco() {
-        let data: &[u8] = include_bytes!("../data/bianco0.szs");
-        let reference_decompressed: &[u8] = include_bytes!("../data/bianco0");
+        let data: &[u8] = include_bytes!("../data/test.yaz0");
+        let reference_decompressed: &[u8] = include_bytes!("../data/test");
 
         let reader = Cursor::new(data);
 

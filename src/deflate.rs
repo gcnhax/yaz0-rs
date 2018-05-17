@@ -379,13 +379,13 @@ mod test {
     // this takes way too long on CI. TODO: figure out how to still test this on CI;
     // maybe just build _this one test_ with --release.
     #[ignore]
-    fn inverts_bianco() {
+    fn inverts_test_file() {
         use indicatif::{ProgressBar, ProgressDrawTarget};
         use inflate::Yaz0Archive;
         use std::io::Cursor;
         use std::thread;
 
-        let data: &[u8] = include_bytes!("../data/bianco0");
+        let data: &[u8] = include_bytes!("../data/test");
 
         let (tx, rx) = mpsc::channel::<ProgressMsg>();
         let pb = ProgressBar::new(data.len() as u64);
