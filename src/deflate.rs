@@ -152,7 +152,7 @@ fn compress_lookaround(
         CompressionLevel::Lookahead { quality } => quality,
     };
     const MAX_LOOKBACK: usize = 0x1000;
-    let lookback = (MAX_LOOKBACK / (10. / quality as f32)).floor() as usize;
+    let lookback = (MAX_LOOKBACK as f32 / (10. / quality as f32)).floor() as usize;
 
     // used to cache lookahead runs to put in the next packet,
     // since we need to write a head packet first
