@@ -15,6 +15,7 @@ edition = "2018"
 [dependencies]
 byteorder = "1.1.0"
 arrayvec = "0.4.7"
+thiserror = "1.0.22"
 indicatif = { version = "0.9", optional = true }
 clap = { version = "2.31.2", optional = true }
 
