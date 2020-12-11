@@ -14,7 +14,7 @@ use std::path::Path;
 use yaz0::{Yaz0Archive, Yaz0Writer, CompressionLevel};
 use yaz0::deflate::ProgressMsg;
 
-fn main() -> Result<(), Box<Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::new("yaztool")
         .author("Erin Moon <erin@hashbang.sh>")
         .about("(de)compresses Yaz0 files")
