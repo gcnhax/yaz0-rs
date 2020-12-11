@@ -1,6 +1,6 @@
 [package]
 name = "yaz0"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Erin Moon <erin@hashbang.sh>"]
 description = "A library for de/compressing Nintendo Yaz0 files"
 license = "MIT"
