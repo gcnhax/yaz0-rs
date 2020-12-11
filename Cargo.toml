@@ -10,6 +10,7 @@ documentation = "https://docs.rs/yaz0"
 keywords = ["yaz0", "gamecube", "gcn", "romhacking"]
 categories = ["compression"]
 exclude = ["data/*"]
+edition = "2018"
 
 [dependencies]
 byteorder = "1.1.0"

@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use error::Error;
+use crate::error::Error;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 /// The header on a Yaz0 file.

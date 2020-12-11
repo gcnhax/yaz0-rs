@@ -1,8 +1,8 @@
 use byteorder::ReadBytesExt;
 use std::io::{Read, Seek, SeekFrom};
 
-use header::Yaz0Header;
-use Error;
+use crate::header::Yaz0Header;
+use crate::Error;
 
 /// Wraps a reader of Yaz0 data, providing decompression methods.
 #[derive(Debug)]
@@ -86,6 +86,7 @@ where
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use pretty_assertions::assert_eq;
 
     /// Deflate a test .szs file encoded by yaz0enc, and compare to the decompressed file produced by yaz0dec.
     #[test]

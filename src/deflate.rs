@@ -1,8 +1,8 @@
 use arrayvec::{self, ArrayVec};
-use header::Yaz0Header;
+use crate::header::Yaz0Header;
 use std::io::Write;
 use std::sync::mpsc::{self, Sender};
-use Error;
+use crate::Error;
 
 pub struct Yaz0Writer<'a, W: 'a>
 where
@@ -308,6 +308,7 @@ pub enum CompressionLevel {
 #[cfg(test)]
 mod test {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     #[cfg_attr(rustfmt, rustfmt_skip)] // don't mess up our arrays 😅
@@ -353,7 +354,7 @@ mod test {
 
     #[test]
     fn inverts() {
-        use inflate::Yaz0Archive;
+        use crate::inflate::Yaz0Archive;
         use rand::distributions::Standard;
         use rand::{self, Rng};
         use std::io::Cursor;
@@ -381,7 +382,7 @@ mod test {
     #[ignore]
     fn inverts_test_file() {
         use indicatif::{ProgressBar, ProgressDrawTarget};
-        use inflate::Yaz0Archive;
+        use crate::inflate::Yaz0Archive;
         use std::io::Cursor;
         use std::thread;
 
