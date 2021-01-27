@@ -34,10 +34,21 @@ where
         })
     }
 
+    /// Get the expected size of inflated data from parsed `Yaz0Header`.
+    pub fn expected_size(&self) -> usize {
+        self.header.expected_size
+    }
+
     /// Decompresses the Yaz0 file, producing a `Vec<u8>` of the decompressed data.
     pub fn decompress(&mut self) -> Result<Vec<u8>, Error> {
         let mut dest: Vec<u8> = Vec::with_capacity(self.header.expected_size);
         dest.resize(self.header.expected_size, 0x00);
+        self.decompress_into(&mut dest)?;
+        Ok(dest)
+    }
+
+    /// Decompresses the Yaz0 file into a destination buffer.
+    pub fn decompress_into(&mut self, dest: &mut [u8]) -> Result<(), Error> {
         let mut dest_pos: usize = 0;
 
         let mut ops_left: u8 = 0;
@@ -78,7 +89,7 @@ where
             ops_left -= 1;
         }
 
-        Ok(dest)
+        Ok(())
     }
 }
 
