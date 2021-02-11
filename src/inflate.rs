@@ -48,7 +48,12 @@ where
     }
 
     /// Decompresses the Yaz0 file into a destination buffer.
+    ///
+    /// # Invariants
+    /// `dest` must have a length of at least the required size to decompress successfully (consider using [`Yaz0Archive::expected_size`] to determine this)
     pub fn decompress_into(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+        assert!(dest.len() >= self.expected_size());
+
         let mut dest_pos: usize = 0;
 
         let mut ops_left: u8 = 0;
